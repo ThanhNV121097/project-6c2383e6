@@ -4,10 +4,13 @@ import (
 	"context"
 	"crypto/sha256"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"sort"
@@ -15,8 +18,24 @@ import (
 	"time"
 
 	"github.com/ThanhNV121097/project-6c2383e6/backend/migrations"
+	"github.com/jackc/pgconn"
 	"github.com/jackc/pgx/v5/stdlib"
 )
+
+const defaultGreeting = "Hello, World!"
+
+type greetingResponse struct {
+	Text string `json:"text"`
+}
+
+type errorResponse struct {
+	Error apiError `json:"error"`
+}
+
+type apiError struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}
 
 func main() {
 	databaseURL := os.Getenv("DATABASE_URL")
@@ -46,18 +65,134 @@ func main() {
 	if port == "" {
 		port = "8080"
 	}
-	http.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
 		}
 		if err := db.PingContext(r.Context()); err != nil {
-			http.Error(w, "service unavailable", http.StatusServiceUnavailable)
+			writeAPIError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "Service unavailable.")
 			return
 		}
 		w.WriteHeader(http.StatusOK)
 	})
-	log.Fatal(http.ListenAndServe(":"+port, nil))
+	mux.HandleFunc("/v1/greeting", greetingHandler(db))
+	log.Fatal(http.ListenAndServe(":"+port, cors(mux)))
+}
+
+func greetingHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			text, err := readGreeting(r.Context(), db)
+			if err != nil {
+				writeDBError(w, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, greetingResponse{Text: text})
+		case http.MethodPut:
+			text, ok := decodeGreetingRequest(w, r)
+			if !ok {
+				return
+			}
+			saved, err := saveGreeting(r.Context(), db, text)
+			if err != nil {
+				writeDBError(w, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, greetingResponse{Text: saved})
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	}
+}
+
+func readGreeting(ctx context.Context, db *sql.DB) (string, error) {
+	var text string
+	err := db.QueryRowContext(ctx, `SELECT text FROM greetings WHERE id = true`).Scan(&text)
+	if errors.Is(err, sql.ErrNoRows) {
+		return defaultGreeting, nil
+	}
+	return text, err
+}
+
+func saveGreeting(ctx context.Context, db *sql.DB, text string) (string, error) {
+	_, err := db.ExecContext(ctx, `INSERT INTO greetings (id, text) VALUES (true, $1) ON CONFLICT (id) DO UPDATE SET text = EXCLUDED.text`, text)
+	if err != nil {
+		return "", err
+	}
+	return text, nil
+}
+
+func decodeGreetingRequest(w http.ResponseWriter, r *http.Request) (string, bool) {
+	defer r.Body.Close()
+	var body struct {
+		Text string `json:"text"`
+	}
+	decoder := json.NewDecoder(io.LimitReader(r.Body, 1<<20))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&body); err != nil {
+		writeAPIError(w, http.StatusBadRequest, "MALFORMED_REQUEST", "Request body is malformed.")
+		return "", false
+	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		writeAPIError(w, http.StatusBadRequest, "MALFORMED_REQUEST", "Request body is malformed.")
+		return "", false
+	}
+	text := strings.TrimSpace(body.Text)
+	if text == "" {
+		writeAPIError(w, http.StatusUnprocessableEntity, "VALIDATION_FAILED", "Greeting must not be empty.")
+		return "", false
+	}
+	return text, true
+}
+
+func writeDBError(w http.ResponseWriter, err error) {
+	if isUnavailable(err) {
+		writeAPIError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "Service unavailable.")
+		return
+	}
+	writeAPIError(w, http.StatusInternalServerError, "INTERNAL", "Internal server error.")
+}
+
+func isUnavailable(err error) bool {
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+	var netErr net.Error
+	if errors.As(err, &netErr) {
+		return true
+	}
+	var opErr *net.OpError
+	if errors.As(err, &opErr) {
+		return true
+	}
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "08006"
+}
+
+func writeAPIError(w http.ResponseWriter, status int, code string, message string) {
+	writeJSON(w, status, errorResponse{Error: apiError{Code: code, Message: message}})
+}
+
+func writeJSON(w http.ResponseWriter, status int, body any) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(body)
+}
+
+func cors(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, PUT, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func migrate(ctx context.Context, db *sql.DB) error {
