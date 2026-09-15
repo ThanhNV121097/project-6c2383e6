@@ -1,5 +1,8 @@
 .section {
+  display: grid;
+  align-content: center;
   width: min(100%, 560px);
+  min-height: 100vh;
   margin: var(--space-0) auto;
   padding: var(--space-page-padding);
   text-align: center;
