@@ -1,9 +1,12 @@
 import PersistEditableGreeting from "../components/PersistEditableGreeting";
+import { readGreetingFromServer } from "../lib/persist-editable-greeting";
 
-export default function Page() {
+export default async function Page() {
+  const greeting = await readGreetingFromServer();
+
   return (
     <main>
-      <PersistEditableGreeting />
+      <PersistEditableGreeting initialGreeting={greeting} />
     </main>
   );
 }
