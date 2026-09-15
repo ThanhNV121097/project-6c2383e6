@@ -1,3 +1,9 @@
+import PersistEditableGreeting from "../components/PersistEditableGreeting";
+
 export default function Page() {
-  return <main />;
+  return (
+    <main>
+      <PersistEditableGreeting />
+    </main>
+  );
 }

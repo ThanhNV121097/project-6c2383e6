@@ -1,0 +1,91 @@
+.section {
+  display: grid;
+  align-content: center;
+  width: min(100%, 560px);
+  min-height: 100vh;
+  margin: var(--space-0) auto;
+  padding: var(--space-page-padding);
+  text-align: center;
+}
+
+.heading {
+  margin: var(--space-0) var(--space-0) var(--space-heading-gap);
+  color: var(--color-text);
+  font-size: var(--text-display);
+  line-height: 1.05;
+  font-weight: var(--font-weight-heading);
+  overflow-wrap: anywhere;
+}
+
+.form {
+  display: flex;
+  gap: var(--space-form-gap);
+  justify-content: center;
+  align-items: stretch;
+}
+
+.label {
+  position: absolute;
+  width: var(--space-1px);
+  height: var(--space-1px);
+  padding: var(--space-0);
+  margin: calc(var(--space-1px) * -1);
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: var(--space-0);
+}
+
+.input {
+  flex: 1;
+  min-width: var(--space-0);
+  border: var(--border-control) var(--color-text);
+  border-radius: var(--radius-control);
+  padding: var(--space-control-y) var(--space-control-x);
+  font: inherit;
+  font-size: var(--text-control);
+  font-weight: var(--font-weight-body);
+  color: var(--color-text);
+  background: var(--color-bg);
+}
+
+.button {
+  border: var(--border-control) var(--color-primary-action);
+  border-radius: var(--radius-control);
+  padding: var(--space-control-y) var(--space-button-x);
+  font: inherit;
+  font-size: var(--text-control);
+  font-weight: var(--font-weight-action);
+  color: var(--color-bg);
+  background: var(--color-primary-action);
+  cursor: pointer;
+}
+
+.input:focus,
+.button:focus {
+  outline: var(--outline-focus) var(--color-primary-action);
+  outline-offset: var(--space-focus-offset);
+}
+
+.button:hover {
+  color: var(--color-bg);
+  background: var(--color-primary-action);
+}
+
+.status {
+  min-height: var(--space-page-padding);
+  margin: var(--space-form-gap) var(--space-0) var(--space-0);
+  color: var(--color-text);
+  font-size: var(--text-status);
+}
+
+@media (max-width: 520px) {
+  .form {
+    flex-direction: column;
+  }
+
+  .button,
+  .input {
+    width: 100%;
+  }
+}
