@@ -127,11 +127,8 @@ func saveGreeting(ctx context.Context, db *sql.DB, text string) (string, error) 
 
 func decodeGreetingRequest(w http.ResponseWriter, r *http.Request) (string, bool) {
 	defer r.Body.Close()
-	var body struct {
-		Text string `json:"text"`
-	}
+	var body map[string]json.RawMessage
 	decoder := json.NewDecoder(io.LimitReader(r.Body, 1<<20))
-	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&body); err != nil {
 		writeAPIError(w, http.StatusBadRequest, "MALFORMED_REQUEST", "Request body is malformed.")
 		return "", false
@@ -140,7 +137,17 @@ func decodeGreetingRequest(w http.ResponseWriter, r *http.Request) (string, bool
 		writeAPIError(w, http.StatusBadRequest, "MALFORMED_REQUEST", "Request body is malformed.")
 		return "", false
 	}
-	text := strings.TrimSpace(body.Text)
+	textJSON, ok := body["text"]
+	if !ok || len(body) != 1 {
+		writeAPIError(w, http.StatusBadRequest, "MALFORMED_REQUEST", "Request body is malformed.")
+		return "", false
+	}
+	var rawText string
+	if err := json.Unmarshal(textJSON, &rawText); err != nil {
+		writeAPIError(w, http.StatusBadRequest, "MALFORMED_REQUEST", "Request body is malformed.")
+		return "", false
+	}
+	text := strings.TrimSpace(rawText)
 	if text == "" {
 		writeAPIError(w, http.StatusUnprocessableEntity, "VALIDATION_FAILED", "Greeting must not be empty.")
 		return "", false
